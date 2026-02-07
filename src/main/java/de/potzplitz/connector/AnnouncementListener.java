@@ -3,6 +3,7 @@ package de.potzplitz.connector;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import de.potzplitz.var.MasterInfo;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,41 +12,53 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 
 public class AnnouncementListener {
+    private static HttpServer server;
 
-    public static void startListening(int port) throws IOException {
-        HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
+    public static void startListening(int port, Runnable onAnnouncement) throws IOException {
+        if (server != null) return; // schon gestartet
 
-        server.createContext("/announcement", new RegisterHandler());
-        server.setExecutor(null); // default executor
-
+        server = HttpServer.create(new InetSocketAddress(port), 0);
+        server.createContext("/announcement", new RegisterHandler(onAnnouncement));
+        server.setExecutor(null);
         server.start();
+
         System.out.println("Agent listening on port " + port);
     }
 
     static class RegisterHandler implements HttpHandler {
+        private final Runnable onAnnouncement;
+
+        RegisterHandler(Runnable onAnnouncement) {
+            this.onAnnouncement = onAnnouncement;
+        }
+
         @Override
         public void handle(HttpExchange exchange) throws IOException {
-            if (!"POST".equals(exchange.getRequestMethod())) {
+            if (!"POST".equalsIgnoreCase(exchange.getRequestMethod())) {
                 exchange.sendResponseHeaders(405, -1);
                 return;
             }
 
-            String clientIp = exchange.getRemoteAddress()
-                    .getAddress()
-                    .getHostAddress();
+            // master URL lieber aus body nehmen (robuster als remoteAddress)
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8).trim();
+            if (!body.isBlank()) {
+                MasterInfo.setMasterBaseUrl(body);
+            } else {
+                String clientIp = exchange.getRemoteAddress().getAddress().getHostAddress();
+                MasterInfo.setMasterBaseUrl("http://" + clientIp + ":8080");
+            }
 
-            InputStream is = exchange.getRequestBody();
-            String body = new String(is.readAllBytes(), StandardCharsets.UTF_8);
-
-            System.out.println("Received request: " + body + "IP: " + clientIp);
+            MasterInfo.setHasMaster(true);
 
             byte[] response = "OK".getBytes(StandardCharsets.UTF_8);
             exchange.sendResponseHeaders(200, response.length);
-
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(response);
             }
+
+            // WICHTIG: NICHT stoppen! Listener soll weiter laufen können.
+            if (onAnnouncement != null) onAnnouncement.run();
         }
     }
-
 }
+
