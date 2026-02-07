@@ -17,28 +17,25 @@ public class AgentRuntime {
     public void start() throws Exception {
         scheduler.start();
 
-        // Listener läuft immer; bei Announcement werden wir "geweckt"
         AnnouncementListener.startListening(9090, () -> {
+            MasterInfo.setBackendAlive(true);
             System.out.println("[agent] Announcement received, master=" + MasterInfo.getMasterBaseUrl());
         });
 
-        // Main loop: wartet -> startet jobs -> überwacht -> stoppt bei down -> wartet wieder
         while (true) {
             System.out.println("[agent] Waiting for master announcement...");
             MasterInfo.awaitMaster();
 
-            // optional: hier könntest du sofort einen HealthCheck machen, bevor du jobs startest
             startJobsIfNotRunning();
 
-            // Blockiert nicht hart, HealthJob wird backendAlive setzen; wir checken regelmäßig
             while (MasterInfo.hasMaster()) {
                 Thread.sleep(1000);
 
                 if (!MasterInfo.isBackendAlive()) {
-                    // Backend weg -> Jobs stoppen -> zurück in WAITING state
+
                     System.out.println("[agent] Backend DOWN -> stopping jobs and waiting for re-announce");
                     stopJobsIfRunning();
-                    MasterInfo.resetMaster(); // zwingt awaitMaster() wieder zu warten
+                    MasterInfo.resetMaster();
                     break;
                 }
             }

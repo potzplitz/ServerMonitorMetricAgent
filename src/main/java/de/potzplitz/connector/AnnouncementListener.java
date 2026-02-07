@@ -15,7 +15,7 @@ public class AnnouncementListener {
     private static HttpServer server;
 
     public static void startListening(int port, Runnable onAnnouncement) throws IOException {
-        if (server != null) return; // schon gestartet
+        if (server != null) return;
 
         server = HttpServer.create(new InetSocketAddress(port), 0);
         server.createContext("/announcement", new RegisterHandler(onAnnouncement));
@@ -39,15 +39,8 @@ public class AnnouncementListener {
                 return;
             }
 
-            // master URL lieber aus body nehmen (robuster als remoteAddress)
-            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8).trim();
-            if (!body.isBlank()) {
-                MasterInfo.setMasterBaseUrl(body);
-            } else {
-                String clientIp = exchange.getRemoteAddress().getAddress().getHostAddress();
-                MasterInfo.setMasterBaseUrl("http://" + clientIp + ":8080");
-            }
-
+            String clientIp = exchange.getRemoteAddress().getAddress().getHostAddress();
+            MasterInfo.setMasterBaseUrl("http://" + clientIp + ":8080");
             MasterInfo.setHasMaster(true);
 
             byte[] response = "OK".getBytes(StandardCharsets.UTF_8);
@@ -56,7 +49,6 @@ public class AnnouncementListener {
                 os.write(response);
             }
 
-            // WICHTIG: NICHT stoppen! Listener soll weiter laufen können.
             if (onAnnouncement != null) onAnnouncement.run();
         }
     }

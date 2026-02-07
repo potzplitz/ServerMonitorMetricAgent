@@ -23,28 +23,34 @@ public class MasterUptimeChecker implements Job {
 
     @Override
     public void runOnce() throws IOException {
-        System.out.println("CheckUptime");
+
 
         String baseUrl = MasterInfo.getMasterBaseUrl();
         if (baseUrl == null) throw new IOException("No master base URL known");
 
         String url = baseUrl + "/agent/uptime";
-
+        System.out.println(url);
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .timeout(Duration.ofSeconds(3))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString("{\"status\":\"alive\"}"))
+                .GET()
                 .build();
 
         try {
             HttpResponse<Void> resp = CLIENT.send(request, HttpResponse.BodyHandlers.discarding());
-            if (resp.statusCode() != 200) {
-                throw new IOException("Uptime ping failed, HTTP " + resp.statusCode() + " @ " + url);
+
+            int sc = resp.statusCode();
+            if (sc < 200 || sc >= 300) {
+                MasterInfo.setBackendAlive(false);
+                throw new IOException("Uptime ping failed, HTTP " + sc + " @ " + url);
+
             }
+
         } catch (java.net.ConnectException e) {
+            MasterInfo.setBackendAlive(false);
             throw new IOException("Cannot connect to master @ " + url, e);
         } catch (InterruptedException e) {
+            MasterInfo.setBackendAlive(false);
             Thread.currentThread().interrupt();
             throw new IOException("Uptime ping interrupted @ " + url, e);
         }
